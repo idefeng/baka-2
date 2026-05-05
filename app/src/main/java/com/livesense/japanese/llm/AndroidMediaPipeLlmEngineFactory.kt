@@ -11,7 +11,7 @@ class AndroidMediaPipeLlmEngineFactory(
         // MediaPipe LLM 需要 .task 模型包，开发阶段建议用 adb 放到 /data/local/tmp/llm/。
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelPath)
-            // maxTokens 包含输入和输出；五段学习 Prompt 本身会超过 256 tokens。
+            // maxTokens 包含输入和输出；四段学习 Prompt 和少量上下文会超过 256 tokens。
             .setMaxTokens(1024)
             .setMaxTopK(32)
             .build()

@@ -10,6 +10,8 @@ data class ChatUiState(
     val statusMessage: String = "本地模型待命",
     val speechStatus: SpeechStatus = SpeechStatus.IDLE,
     val speechStatusMessage: String = "语音输入待命",
+    val ttsStatus: TtsStatus = TtsStatus.IDLE,
+    val ttsStatusMessage: String = "语音播放待命",
 )
 
 enum class ModelStatus {
@@ -22,5 +24,11 @@ enum class ModelStatus {
 enum class SpeechStatus {
     IDLE,
     LISTENING,
+    ERROR,
+}
+
+enum class TtsStatus {
+    IDLE,
+    SPEAKING,
     ERROR,
 }

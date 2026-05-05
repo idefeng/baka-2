@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -87,6 +88,16 @@ fun ChatScreen(
             speechStatus = uiState.speechStatus,
             speechStatusMessage = uiState.speechStatusMessage,
         )
+        TtsStatusBar(
+            ttsStatus = uiState.ttsStatus,
+            ttsStatusMessage = uiState.ttsStatusMessage,
+        )
+        ChatToolbar(
+            hasMessages = uiState.messages.isNotEmpty(),
+            isGenerating = uiState.isGenerating,
+            speechStatus = uiState.speechStatus,
+            onClearMessages = viewModel::clearMessages,
+        )
 
         LazyColumn(
             modifier = Modifier
@@ -97,7 +108,12 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(uiState.messages, key = { it.id }) { message ->
-                ChatBubble(message = message)
+                ChatBubble(
+                    message = message,
+                    ttsStatus = uiState.ttsStatus,
+                    onSpeak = viewModel::speakMessage,
+                    onStopSpeaking = viewModel::stopSpeaking,
+                )
             }
         }
 
@@ -110,6 +126,36 @@ fun ChatScreen(
             onStartSpeech = ::requestSpeechInput,
             onStopSpeech = viewModel::stopSpeechInput,
         )
+    }
+}
+
+@Composable
+private fun ChatToolbar(
+    hasMessages: Boolean,
+    isGenerating: Boolean,
+    speechStatus: SpeechStatus,
+    onClearMessages: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = onClearMessages,
+                enabled = hasMessages && !isGenerating && speechStatus != SpeechStatus.LISTENING,
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text("清空")
+            }
+        }
     }
 }
 
@@ -177,7 +223,43 @@ private fun SpeechStatusBar(
 }
 
 @Composable
-private fun ChatBubble(message: ChatMessage) {
+private fun TtsStatusBar(
+    ttsStatus: TtsStatus,
+    ttsStatusMessage: String,
+) {
+    if (ttsStatus == TtsStatus.IDLE) return
+
+    val containerColor = when (ttsStatus) {
+        TtsStatus.ERROR -> MaterialTheme.colorScheme.errorContainer
+        TtsStatus.SPEAKING -> MaterialTheme.colorScheme.secondaryContainer
+        TtsStatus.IDLE -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = when (ttsStatus) {
+        TtsStatus.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+        TtsStatus.SPEAKING -> MaterialTheme.colorScheme.onSecondaryContainer
+        TtsStatus.IDLE -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        color = containerColor,
+        contentColor = contentColor,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = ttsStatusMessage,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun ChatBubble(
+    message: ChatMessage,
+    ttsStatus: TtsStatus,
+    onSpeak: (ChatMessage) -> Unit,
+    onStopSpeaking: () -> Unit,
+) {
     val isUser = message.role == MessageRole.USER
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -201,6 +283,21 @@ private fun ChatBubble(message: ChatMessage) {
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 6.dp),
                 )
+                if (!isUser) {
+                    TextButton(
+                        onClick = {
+                            if (ttsStatus == TtsStatus.SPEAKING) {
+                                onStopSpeaking()
+                            } else {
+                                onSpeak(message)
+                            }
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.padding(top = 4.dp),
+                    ) {
+                        Text(if (ttsStatus == TtsStatus.SPEAKING) "停止播放" else "播放日语")
+                    }
+                }
             }
         }
     }

@@ -11,23 +11,20 @@ class LlmResponseFormatterTest {
         val raw = """
             ---
             こんにちは！余計な前置き
+            【用户原句意思】
+            你好。
             【自然回应】
             こんにちは。
-            【中文释义】
+            【回应意思】
             你好。
-            【用法场景】
-            见面打招呼时使用。
-            【纠错】
-            没有明显错误。
-            【更自然表达】
-            こんにちは。
-            追加の長い説明
+            【语法分析】
+            「こんにちは」是日常问候语。
         """.trimIndent()
 
         val formatted = LlmResponseFormatter.format(raw)
 
         assertEquals(
-            "【自然回应】こんにちは。\n\n【中文释义】你好。\n\n【用法场景】见面打招呼时使用。\n\n【纠错】没有明显错误。\n\n【更自然表达】こんにちは。\n追加の長い説明",
+            "【用户原句意思】你好。\n\n【自然回应】こんにちは。\n\n【回应意思】你好。\n\n【语法分析】「こんにちは」是日常问候语。",
             formatted,
         )
     }
@@ -41,11 +38,26 @@ class LlmResponseFormatterTest {
 
         val formatted = LlmResponseFormatter.format(raw)
 
+        assertTrue(formatted.contains("【用户原句意思】"))
         assertTrue(formatted.contains("【自然回应】"))
-        assertTrue(formatted.contains("【中文释义】"))
-        assertTrue(formatted.contains("【用法场景】"))
-        assertTrue(formatted.contains("【纠错】"))
-        assertTrue(formatted.contains("【更自然表达】"))
+        assertTrue(formatted.contains("【回应意思】"))
+        assertTrue(formatted.contains("【语法分析】"))
         assertFalse(formatted.contains("yo-yo-yo-yo-yo-yo-yo-yo"))
+    }
+
+    @Test
+    fun format_whenOldThreeSectionResponseArrives_mapsCorrectionToGrammarAnalysis() {
+        val raw = """
+            【自然回应】こんにちは。
+            【纠错】没有明显错误。
+            【更自然表达】こんにちは。
+        """.trimIndent()
+
+        val formatted = LlmResponseFormatter.format(raw)
+
+        assertEquals(
+            "【用户原句意思】这句话是日常表达。\n\n【自然回应】こんにちは。\n\n【回应意思】这是自然的日语回应。\n\n【语法分析】没有明显错误。",
+            formatted,
+        )
     }
 }

@@ -1,5 +1,7 @@
 package com.livesense.japanese.llm
 
+import com.livesense.japanese.data.ChatMessage
+import com.livesense.japanese.data.MessageRole
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -7,17 +9,27 @@ import org.junit.Test
 
 class MediaPipeLlmManagerTest {
     @Test
-    fun generate_wrapsPromptAndCallsEngine() = runTest {
-        val engine = RecordingLlmEngine("【自然回应】こんにちは。\n【中文释义】你好。\n【用法场景】见面打招呼时使用。\n【纠错】没有明显错误。\n【更自然表达】こんにちは。")
+    fun generate_wrapsPromptWithRecentMessagesAndCallsEngine() = runTest {
+        val engine = RecordingLlmEngine(
+            "【用户原句意思】我是学生。\n【自然回应】そうですか。\n【回应意思】这样啊。\n【语法分析】「私は」是主语，「学生です」是判断句。"
+        )
         val manager = MediaPipeLlmManager(
             modelPath = "/data/local/tmp/llm/gemma.task",
             engineFactory = { engine },
         )
 
-        val response = manager.generate("私は学生です")
+        val response = manager.generate(
+            userInput = "私は学生です",
+            recentMessages = listOf(ChatMessage(role = MessageRole.USER, content = "こんにちは")),
+        )
 
-        assertEquals("【自然回应】こんにちは。\n\n【中文释义】你好。\n\n【用法场景】见面打招呼时使用。\n\n【纠错】没有明显错误。\n\n【更自然表达】こんにちは。", response)
+        assertEquals("【用户原句意思】我是学生。\n\n【自然回应】そうですか。\n\n【回应意思】这样啊。\n\n【语法分析】「私は」是主语，「学生です」是判断句。", response)
+        assertTrue(engine.lastPrompt.contains("【用户原句意思】"))
         assertTrue(engine.lastPrompt.contains("【自然回应】"))
+        assertTrue(engine.lastPrompt.contains("【回应意思】"))
+        assertTrue(engine.lastPrompt.contains("【语法分析】"))
+        assertTrue(engine.lastPrompt.contains("最近对话："))
+        assertTrue(engine.lastPrompt.contains("用户：こんにちは"))
         assertTrue(engine.lastPrompt.contains("用户输入：私は学生です"))
     }
 

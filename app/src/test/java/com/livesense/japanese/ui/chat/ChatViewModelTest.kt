@@ -1,8 +1,12 @@
 package com.livesense.japanese.ui.chat
 
+import com.livesense.japanese.data.ChatMessage
+import com.livesense.japanese.data.MessageRole
 import com.livesense.japanese.llm.LlmManager
 import com.livesense.japanese.speech.SpeechRecognitionListener
 import com.livesense.japanese.speech.SpeechToTextManager
+import com.livesense.japanese.tts.TextToSpeechListener
+import com.livesense.japanese.tts.TextToSpeechManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -34,7 +38,7 @@ class ChatViewModelTest {
     @Test
     fun sendMessage_appendsUserMessageThenAiResponse() = runTest(dispatcher) {
         val viewModel = ChatViewModel(
-            llmManager = FakeLlmManager("【自然回应】こんにちは\n【纠错】没有明显错误\n【更自然表达】こんにちは。")
+            llmManager = FakeLlmManager("【用户原句意思】你好\n【自然回应】こんにちは\n【回应意思】你好\n【语法分析】问候语。")
         )
 
         viewModel.sendMessage("こんにちは")
@@ -43,7 +47,7 @@ class ChatViewModelTest {
         val messages = viewModel.uiState.value.messages
         assertEquals(2, messages.size)
         assertEquals("こんにちは", messages[0].content)
-        assertEquals("【自然回应】こんにちは\n【纠错】没有明显错误\n【更自然表达】こんにちは。", messages[1].content)
+        assertEquals("【用户原句意思】你好\n【自然回应】こんにちは\n【回应意思】你好\n【语法分析】问候语。", messages[1].content)
         assertFalse(viewModel.uiState.value.isGenerating)
         assertEquals(ModelStatus.READY, viewModel.uiState.value.modelStatus)
     }
@@ -83,6 +87,21 @@ class ChatViewModelTest {
         assertTrue(viewModel.uiState.value.isGenerating)
         assertEquals(ModelStatus.LOADING, viewModel.uiState.value.modelStatus)
         assertEquals("正在加载本地模型并生成回复...", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun clearMessages_removesConversationAndKeepsCurrentInput() = runTest(dispatcher) {
+        val viewModel = ChatViewModel(llmManager = FakeLlmManager("回复"))
+
+        viewModel.sendMessage("こんにちは")
+        advanceUntilIdle()
+        viewModel.onInputChange("次の質問")
+        viewModel.clearMessages()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.messages.isEmpty())
+        assertEquals("次の質問", state.inputText)
+        assertEquals(ModelStatus.READY, state.modelStatus)
     }
 
     @Test
@@ -152,12 +171,53 @@ class ChatViewModelTest {
         assertFalse(speechManager.isListening)
     }
 
+    @Test
+    fun speakMessage_whenAiMessageHasNaturalResponse_speaksOnlyJapaneseResponse() = runTest(dispatcher) {
+        val ttsManager = FakeTextToSpeechManager()
+        val viewModel = ChatViewModel(
+            llmManager = FakeLlmManager("回复"),
+            textToSpeechManager = ttsManager,
+        )
+        val aiMessage = ChatMessage(
+            role = MessageRole.AI,
+            content = "【用户原句意思】我什么也不想吃。\n\n【自然回应】そうなんですね。無理しなくていいですよ。\n\n【回应意思】这样啊。不勉强自己也可以。\n\n【语法分析】「何も」和否定表达连用。",
+        )
+
+        viewModel.speakMessage(aiMessage)
+
+        assertEquals("そうなんですね。無理しなくていいですよ。", ttsManager.spokenText)
+        assertEquals(TtsStatus.SPEAKING, viewModel.uiState.value.ttsStatus)
+        assertEquals("正在播放日语回应...", viewModel.uiState.value.ttsStatusMessage)
+    }
+
+    @Test
+    fun ttsError_marksErrorStatus() = runTest(dispatcher) {
+        val ttsManager = FakeTextToSpeechManager()
+        val viewModel = ChatViewModel(
+            llmManager = FakeLlmManager("回复"),
+            textToSpeechManager = ttsManager,
+        )
+        val aiMessage = ChatMessage(role = MessageRole.AI, content = "【自然回应】こんにちは。")
+
+        viewModel.speakMessage(aiMessage)
+        ttsManager.listener?.onError("TTS 未初始化")
+
+        assertEquals(TtsStatus.ERROR, viewModel.uiState.value.ttsStatus)
+        assertEquals("语音播放失败：TTS 未初始化", viewModel.uiState.value.ttsStatusMessage)
+    }
+
     private class FakeLlmManager(private val response: String) : LlmManager {
-        override suspend fun generate(userInput: String): String = response
+        override suspend fun generate(
+            userInput: String,
+            recentMessages: List<ChatMessage>,
+        ): String = response
     }
 
     private class FailingLlmManager : LlmManager {
-        override suspend fun generate(userInput: String): String {
+        override suspend fun generate(
+            userInput: String,
+            recentMessages: List<ChatMessage>,
+        ): String {
             error("model missing")
         }
     }
@@ -179,6 +239,24 @@ class ChatViewModelTest {
 
         override fun shutdown() {
             isListening = false
+            listener = null
+        }
+    }
+
+    private class FakeTextToSpeechManager : TextToSpeechManager {
+        var spokenText: String = ""
+            private set
+        var listener: TextToSpeechListener? = null
+            private set
+
+        override fun speak(text: String, listener: TextToSpeechListener) {
+            spokenText = text
+            this.listener = listener
+        }
+
+        override fun stop() = Unit
+
+        override fun shutdown() {
             listener = null
         }
     }
