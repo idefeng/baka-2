@@ -47,6 +47,10 @@ Wrap user input with system prompt.
 ### Task 6
 Integrate Vosk STT.
 
+- 添加麦克风权限
+- 接入 Vosk Android
+- 将识别结果回填输入框
+
 ---
 
 ### Task 7

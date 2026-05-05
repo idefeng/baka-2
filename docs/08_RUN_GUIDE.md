@@ -30,3 +30,7 @@
 
 - 首次加载模型较慢
 - 建议使用小模型（2B）
+- Vosk STT 需要把离线识别模型放到 `app/src/main/assets/model/`
+- `app/src/main/assets/model/` 不应提交到 Git 仓库
+- 构建脚本会自动生成 Vosk 所需的 `assets/model/uuid`
+- 完整模型目录至少需要包含 `am/final.mdl` 和 `conf/model.conf`

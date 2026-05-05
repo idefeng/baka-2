@@ -1,6 +1,8 @@
 package com.livesense.japanese.ui.chat
 
 import com.livesense.japanese.llm.LlmManager
+import com.livesense.japanese.speech.SpeechRecognitionListener
+import com.livesense.japanese.speech.SpeechToTextManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -83,6 +85,73 @@ class ChatViewModelTest {
         assertEquals("正在加载本地模型并生成回复...", viewModel.uiState.value.statusMessage)
     }
 
+    @Test
+    fun startSpeechInput_whenManagerIsAvailable_marksListening() = runTest(dispatcher) {
+        val speechManager = FakeSpeechToTextManager()
+        val viewModel = ChatViewModel(
+            llmManager = FakeLlmManager("回复"),
+            speechToTextManager = speechManager,
+        )
+
+        viewModel.startSpeechInput()
+
+        val state = viewModel.uiState.value
+        assertEquals(SpeechStatus.LISTENING, state.speechStatus)
+        assertEquals("正在听日语输入...", state.speechStatusMessage)
+        assertTrue(speechManager.isListening)
+    }
+
+    @Test
+    fun speechFinalResult_updatesInputTextAndStopsListening() = runTest(dispatcher) {
+        val speechManager = FakeSpeechToTextManager()
+        val viewModel = ChatViewModel(
+            llmManager = FakeLlmManager("回复"),
+            speechToTextManager = speechManager,
+        )
+
+        viewModel.startSpeechInput()
+        speechManager.listener?.onFinalResult("今日はいい天気です")
+
+        val state = viewModel.uiState.value
+        assertEquals("今日はいい天気です", state.inputText)
+        assertEquals(SpeechStatus.IDLE, state.speechStatus)
+        assertFalse(speechManager.isListening)
+    }
+
+    @Test
+    fun speechPartialResult_updatesInputTextAndKeepsListening() = runTest(dispatcher) {
+        val speechManager = FakeSpeechToTextManager()
+        val viewModel = ChatViewModel(
+            llmManager = FakeLlmManager("回复"),
+            speechToTextManager = speechManager,
+        )
+
+        viewModel.startSpeechInput()
+        speechManager.listener?.onPartialResult("日本語を勉強しています")
+
+        val state = viewModel.uiState.value
+        assertEquals("日本語を勉強しています", state.inputText)
+        assertEquals(SpeechStatus.LISTENING, state.speechStatus)
+        assertTrue(speechManager.isListening)
+    }
+
+    @Test
+    fun speechError_marksErrorAndStopsListening() = runTest(dispatcher) {
+        val speechManager = FakeSpeechToTextManager()
+        val viewModel = ChatViewModel(
+            llmManager = FakeLlmManager("回复"),
+            speechToTextManager = speechManager,
+        )
+
+        viewModel.startSpeechInput()
+        speechManager.listener?.onError("模型文件不存在")
+
+        val state = viewModel.uiState.value
+        assertEquals(SpeechStatus.ERROR, state.speechStatus)
+        assertEquals("语音识别失败：模型文件不存在", state.speechStatusMessage)
+        assertFalse(speechManager.isListening)
+    }
+
     private class FakeLlmManager(private val response: String) : LlmManager {
         override suspend fun generate(userInput: String): String = response
     }
@@ -90,6 +159,27 @@ class ChatViewModelTest {
     private class FailingLlmManager : LlmManager {
         override suspend fun generate(userInput: String): String {
             error("model missing")
+        }
+    }
+
+    private class FakeSpeechToTextManager : SpeechToTextManager {
+        var listener: SpeechRecognitionListener? = null
+            private set
+        var isListening = false
+            private set
+
+        override fun startListening(listener: SpeechRecognitionListener) {
+            this.listener = listener
+            isListening = true
+        }
+
+        override fun stopListening() {
+            isListening = false
+        }
+
+        override fun shutdown() {
+            isListening = false
+            listener = null
         }
     }
 }

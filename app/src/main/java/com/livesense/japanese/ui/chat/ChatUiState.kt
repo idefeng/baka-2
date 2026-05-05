@@ -8,11 +8,19 @@ data class ChatUiState(
     val isGenerating: Boolean = false,
     val modelStatus: ModelStatus = ModelStatus.IDLE,
     val statusMessage: String = "本地模型待命",
+    val speechStatus: SpeechStatus = SpeechStatus.IDLE,
+    val speechStatusMessage: String = "语音输入待命",
 )
 
 enum class ModelStatus {
     IDLE,
     LOADING,
     READY,
+    ERROR,
+}
+
+enum class SpeechStatus {
+    IDLE,
+    LISTENING,
     ERROR,
 }

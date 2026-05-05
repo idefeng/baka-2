@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.livesense.japanese.llm.AndroidMediaPipeLlmEngineFactory
 import com.livesense.japanese.llm.MediaPipeLlmManager
+import com.livesense.japanese.speech.VoskSpeechToTextManager
 import com.livesense.japanese.ui.chat.ChatScreen
 import com.livesense.japanese.ui.chat.ChatViewModel
 import com.livesense.japanese.ui.theme.LiveSenseJapaneseTheme
@@ -20,7 +21,8 @@ class MainActivity : ComponentActivity() {
                 val llmManager = MediaPipeLlmManager(
                     engineFactory = AndroidMediaPipeLlmEngineFactory(applicationContext),
                 )
-                return ChatViewModel(llmManager) as T
+                val speechToTextManager = VoskSpeechToTextManager(applicationContext)
+                return ChatViewModel(llmManager, speechToTextManager) as T
             }
         }
     }

@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.livesense.japanese.data.ChatMessage
 import com.livesense.japanese.data.MessageRole
 import com.livesense.japanese.llm.LlmManager
+import com.livesense.japanese.speech.SpeechRecognitionListener
+import com.livesense.japanese.speech.SpeechToTextManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,6 +15,7 @@ import kotlinx.coroutines.launch
 
 class ChatViewModel(
     private val llmManager: LlmManager,
+    private val speechToTextManager: SpeechToTextManager? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
@@ -62,6 +65,75 @@ class ChatViewModel(
                 )
             }
         }
+    }
+
+    fun startSpeechInput() {
+        val manager = speechToTextManager
+        if (manager == null || uiState.value.isGenerating || uiState.value.speechStatus == SpeechStatus.LISTENING) return
+
+        _uiState.update { currentState ->
+            currentState.copy(
+                speechStatus = SpeechStatus.LISTENING,
+                speechStatusMessage = "正在听日语输入...",
+            )
+        }
+
+        // 将平台语音识别结果收敛到输入框，用户可编辑后再发送给 LLM。
+        manager.startListening(
+            object : SpeechRecognitionListener {
+                override fun onPartialResult(text: String) {
+                    if (text.isBlank()) return
+                    _uiState.update { currentState ->
+                        currentState.copy(inputText = text)
+                    }
+                }
+
+                override fun onFinalResult(text: String) {
+                    manager.stopListening()
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            inputText = text.ifBlank { currentState.inputText },
+                            speechStatus = SpeechStatus.IDLE,
+                            speechStatusMessage = "语音输入待命",
+                        )
+                    }
+                }
+
+                override fun onError(message: String) {
+                    manager.stopListening()
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            speechStatus = SpeechStatus.ERROR,
+                            speechStatusMessage = "语音识别失败：$message",
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    fun stopSpeechInput() {
+        speechToTextManager?.stopListening()
+        _uiState.update { currentState ->
+            currentState.copy(
+                speechStatus = SpeechStatus.IDLE,
+                speechStatusMessage = "语音输入待命",
+            )
+        }
+    }
+
+    fun onSpeechPermissionDenied() {
+        _uiState.update { currentState ->
+            currentState.copy(
+                speechStatus = SpeechStatus.ERROR,
+                speechStatusMessage = "语音识别失败：需要麦克风权限",
+            )
+        }
+    }
+
+    override fun onCleared() {
+        speechToTextManager?.shutdown()
+        super.onCleared()
     }
 
     private fun buildLlmErrorMessage(error: Throwable): String {

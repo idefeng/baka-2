@@ -1,5 +1,9 @@
 package com.livesense.japanese.ui.chat
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -23,12 +28,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
 import com.livesense.japanese.data.ChatMessage
 import com.livesense.japanese.data.MessageRole
 
@@ -36,8 +43,27 @@ import com.livesense.japanese.data.MessageRole
 fun ChatScreen(
     viewModel: ChatViewModel = viewModel(),
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+    val speechPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.startSpeechInput()
+        } else {
+            viewModel.onSpeechPermissionDenied()
+        }
+    }
+
+    fun requestSpeechInput() {
+        // 录音权限只在用户点击语音按钮时申请，避免启动时打断文本输入。
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            viewModel.startSpeechInput()
+        } else {
+            speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
@@ -49,12 +75,17 @@ fun ChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding(),
     ) {
         ModelStatusBar(
             modelStatus = uiState.modelStatus,
             statusMessage = uiState.statusMessage,
+        )
+        SpeechStatusBar(
+            speechStatus = uiState.speechStatus,
+            speechStatusMessage = uiState.speechStatusMessage,
         )
 
         LazyColumn(
@@ -73,8 +104,11 @@ fun ChatScreen(
         ChatInputBar(
             text = uiState.inputText,
             isGenerating = uiState.isGenerating,
+            speechStatus = uiState.speechStatus,
             onTextChange = viewModel::onInputChange,
             onSend = viewModel::sendCurrentInput,
+            onStartSpeech = ::requestSpeechInput,
+            onStopSpeech = viewModel::stopSpeechInput,
         )
     }
 }
@@ -105,6 +139,37 @@ private fun ModelStatusBar(
         // 状态条用于区分首次加载、推理中、就绪和失败，方便真机调试。
         Text(
             text = statusMessage,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun SpeechStatusBar(
+    speechStatus: SpeechStatus,
+    speechStatusMessage: String,
+) {
+    if (speechStatus == SpeechStatus.IDLE) return
+
+    val containerColor = when (speechStatus) {
+        SpeechStatus.ERROR -> MaterialTheme.colorScheme.errorContainer
+        SpeechStatus.LISTENING -> MaterialTheme.colorScheme.tertiaryContainer
+        SpeechStatus.IDLE -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = when (speechStatus) {
+        SpeechStatus.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+        SpeechStatus.LISTENING -> MaterialTheme.colorScheme.onTertiaryContainer
+        SpeechStatus.IDLE -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        color = containerColor,
+        contentColor = contentColor,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = if (speechStatus == SpeechStatus.LISTENING) "$speechStatusMessage 说完后点停止" else speechStatusMessage,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
@@ -145,9 +210,14 @@ private fun ChatBubble(message: ChatMessage) {
 private fun ChatInputBar(
     text: String,
     isGenerating: Boolean,
+    speechStatus: SpeechStatus,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
+    onStartSpeech: () -> Unit,
+    onStopSpeech: () -> Unit,
 ) {
+    val isListening = speechStatus == SpeechStatus.LISTENING
+
     Surface(
         tonalElevation = 2.dp,
         color = Color.White,
@@ -166,8 +236,15 @@ private fun ChatInputBar(
                 placeholder = { Text("输入日语") },
                 minLines = 1,
                 maxLines = 4,
-                enabled = !isGenerating,
+                enabled = !isGenerating && !isListening,
             )
+            Button(
+                onClick = if (isListening) onStopSpeech else onStartSpeech,
+                enabled = !isGenerating,
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text(if (isListening) "停止" else "语音")
+            }
             Box(
                 modifier = Modifier,
                 contentAlignment = Alignment.Center,
