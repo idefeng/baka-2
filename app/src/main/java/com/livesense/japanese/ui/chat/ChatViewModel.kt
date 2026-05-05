@@ -37,20 +37,28 @@ class ChatViewModel(
                 messages = currentState.messages + userMessage,
                 inputText = "",
                 isGenerating = true,
+                modelStatus = ModelStatus.LOADING,
+                statusMessage = "正在加载本地模型并生成回复...",
             )
         }
 
         viewModelScope.launch {
             // 串联用户输入与本地 LLM，生成完成后追加 AI 消息。
-            val aiContent = runCatching { llmManager.generate(input) }
-                .getOrElse { error ->
-                    buildLlmErrorMessage(error)
-                }
+            val generationResult = runCatching { llmManager.generate(input) }
+            val aiContent = generationResult.getOrElse { error ->
+                buildLlmErrorMessage(error)
+            }
             val aiMessage = ChatMessage(role = MessageRole.AI, content = aiContent)
             _uiState.update { currentState ->
                 currentState.copy(
                     messages = currentState.messages + aiMessage,
                     isGenerating = false,
+                    modelStatus = if (generationResult.isSuccess) ModelStatus.READY else ModelStatus.ERROR,
+                    statusMessage = if (generationResult.isSuccess) {
+                        "本地模型已就绪"
+                    } else {
+                        "本地模型调用失败：${generationResult.exceptionOrNull()?.message ?: "未知错误"}"
+                    },
                 )
             }
         }

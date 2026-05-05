@@ -52,6 +52,11 @@ fun ChatScreen(
             .navigationBarsPadding()
             .imePadding(),
     ) {
+        ModelStatusBar(
+            modelStatus = uiState.modelStatus,
+            statusMessage = uiState.statusMessage,
+        )
+
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
@@ -70,6 +75,38 @@ fun ChatScreen(
             isGenerating = uiState.isGenerating,
             onTextChange = viewModel::onInputChange,
             onSend = viewModel::sendCurrentInput,
+        )
+    }
+}
+
+@Composable
+private fun ModelStatusBar(
+    modelStatus: ModelStatus,
+    statusMessage: String,
+) {
+    val containerColor = when (modelStatus) {
+        ModelStatus.ERROR -> MaterialTheme.colorScheme.errorContainer
+        ModelStatus.LOADING -> MaterialTheme.colorScheme.secondaryContainer
+        ModelStatus.READY -> MaterialTheme.colorScheme.primaryContainer
+        ModelStatus.IDLE -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = when (modelStatus) {
+        ModelStatus.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+        ModelStatus.LOADING -> MaterialTheme.colorScheme.onSecondaryContainer
+        ModelStatus.READY -> MaterialTheme.colorScheme.onPrimaryContainer
+        ModelStatus.IDLE -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        color = containerColor,
+        contentColor = contentColor,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        // 状态条用于区分首次加载、推理中、就绪和失败，方便真机调试。
+        Text(
+            text = statusMessage,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
     }
 }

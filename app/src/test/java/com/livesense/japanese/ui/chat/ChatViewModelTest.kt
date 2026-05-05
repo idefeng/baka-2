@@ -43,6 +43,7 @@ class ChatViewModelTest {
         assertEquals("こんにちは", messages[0].content)
         assertEquals("【自然回应】こんにちは\n【纠错】没有明显错误\n【更自然表达】こんにちは。", messages[1].content)
         assertFalse(viewModel.uiState.value.isGenerating)
+        assertEquals(ModelStatus.READY, viewModel.uiState.value.modelStatus)
     }
 
     @Test
@@ -53,6 +54,7 @@ class ChatViewModelTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.messages.isEmpty())
+        assertEquals(ModelStatus.IDLE, viewModel.uiState.value.modelStatus)
     }
 
     @Test
@@ -66,6 +68,19 @@ class ChatViewModelTest {
         assertEquals(2, state.messages.size)
         assertTrue(state.messages[1].content.contains("本地模型调用失败"))
         assertFalse(state.isGenerating)
+        assertEquals(ModelStatus.ERROR, state.modelStatus)
+        assertTrue(state.statusMessage.contains("model missing"))
+    }
+
+    @Test
+    fun sendMessage_marksModelLoadingBeforeGenerationFinishes() = runTest(dispatcher) {
+        val viewModel = ChatViewModel(llmManager = FakeLlmManager("回复"))
+
+        viewModel.sendMessage("こんにちは")
+
+        assertTrue(viewModel.uiState.value.isGenerating)
+        assertEquals(ModelStatus.LOADING, viewModel.uiState.value.modelStatus)
+        assertEquals("正在加载本地模型并生成回复...", viewModel.uiState.value.statusMessage)
     }
 
     private class FakeLlmManager(private val response: String) : LlmManager {
